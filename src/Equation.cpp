@@ -197,7 +197,7 @@ Fields::vectorField Equation::solve(Fields::vectorField& phi,FiniteMatrix::finit
             RSM = Residual/(RESOR+small);
 
 
-      cout << EqnName << " Inner It: " << L << " and Residual --> " << Residual << " RSM " << RSM << endl;
+     // cout << EqnName << " Inner It: " << L << " and Residual --> " << Residual << " RSM " << RSM << endl;
 
     // Back Subsitution and Correction
     for(unsigned int i=phi.size()-2; i >=1; --i)

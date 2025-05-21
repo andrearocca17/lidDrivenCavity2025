@@ -12,9 +12,12 @@ class Simple
 public:
     Simple(int& N_, int& M_, double& l_);
     virtual ~Simple();
-
+    // JSON setters
+    void setTol     (double t) { tol_     = t; }
+    void setMaxIter (int    m) { maxIter_ = m; }
+    void setOutInt  (int    o) { outInt_  = o; }
+        // Run SIMPLE
     void assembleSolveMomentum();
-
 
 private:
     void passGrid();
@@ -22,6 +25,12 @@ private:
     void resolveV();
     void resolveP();
 
+    // JSON‐configurable parameters
+    double tol_     = 1e-6;
+    int    maxIter_ = 2000;
+    int    outInt_  = 200;
+    
+    // Internal physics state
     int pressureGEast = 1;
     int pressureGNorth = 2;
     int solveIter = 1;

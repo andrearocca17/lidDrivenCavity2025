@@ -1,5 +1,8 @@
 #include "Simple.h"
+#include <iomanip>    // for std::setw, std::setprecision
 #include <iostream>
+#include <algorithm> // for std::max
+#include <cmath>     // for std::abs
 #include "Equation.h"
 #include "FiniteVolume.h"
 #include "SipSolSolver.h"
@@ -105,10 +108,14 @@ void Simple::assembleSolveMomentum()
     passGrid();
     FieldOper.dirichletBoundary(U, Northb, ULID);
 
-    for (int iter = 0; iter < 2; iter++)
-    {
-        cout << " ITER -> " << iter + 1 << endl;
+    // 1) Print a one-time header (with colors)
 
+    Fields::vectorField Uprev = U;
+    Fields::vectorField Vprev = V;
+    Fields::vectorField Pprev = P;
+
+    for (int iter = 0; iter < maxIter_; iter++)
+    {
         // 1. ASSEMBLE AND SOLVE MOMENTUM EQUATION 
         FieldOper.extaraPolateZeroGrad(P, myGrid_.FX, myGrid_.FY, Northb);
         FieldOper.extaraPolateZeroGrad(P, myGrid_.FX, myGrid_.FY, Southb);
@@ -146,7 +153,7 @@ void Simple::assembleSolveMomentum()
         FieldOper.extaraPolateZeroGrad(PP, myGrid_.FX, myGrid_.FY, Southb);
         FieldOper.extaraPolateZeroGrad(PP, myGrid_.FX, myGrid_.FY, WestB);
         FieldOper.extaraPolateZeroGrad(PP, myGrid_.FX, myGrid_.FY, EastB);
-        cout << " Pressure at Ref location 2,2 " << PP[4][4].value << endl;
+        //cout << "Pressure at Ref location 2,2 " << PP[4][4].value << endl;
 
         // 4. CORRECT FLUXES, U, V, P AND UPDATE VARIABLES FOR NEXT ITERATION
         FiniteClass_.correctEastMassFluxes(F1, PP, PAE);  //F1 okay
@@ -168,19 +175,32 @@ void Simple::assembleSolveMomentum()
             P[i][j].value = P[i][j].value + sol_.URFPressure * (PP[i][j].value - PP[4][4].value);
         }
 
+        double maxDU = 0.0, maxDV = 0.0, maxDP = 0.0;
+        for (int i = 1; i < NI-1; ++i) {
+            for (int j = 1; j < NJ-1; ++j) {
+                maxDU = std::max(maxDU, std::abs(U[i][j].value - Uprev[i][j].value));
+                maxDV = std::max(maxDV, std::abs(V[i][j].value - Vprev[i][j].value));
+                maxDP = std::max(maxDP, std::abs(P[i][j].value - Pprev[i][j].value));
+            }
+        }
+        double resid = std::max({maxDU, maxDV, maxDP});
+        std::cout << "[Simple] Iter " << iter
+              << "    residual = " << std::scientific << resid
+              << "\n";        // 4) Print this iteration in aligned columns
+        
+        if (resid < tol_) {
+            std::cout << "[Simple] Converged at iter " << iter << "\n";
+            fileWriterr.writeUVP(results, iter, myGrid_, U, V, P);
+            break;
+        }
+        Uprev = U;
+        Vprev = V;
+        Pprev = P;
 
-     
-        int time1 = iter;
+        // 6) Output a intervalli
+        if (iter % outInt_ == 0)
+            fileWriterr.writeUVP(results, iter, myGrid_, U, V, P);
 
-     /*   if (time1 % 200 == 0)
-        {
-            fileWriterr.writeUVP(results, time1, myGrid_, U, V, P);
-        }*/
-   /*     if (fileWriterr)
-        {
-            delete fileWriterr;
-            fileWriterr = nullptr;
-        }*/
 
 
        if (UEqn)

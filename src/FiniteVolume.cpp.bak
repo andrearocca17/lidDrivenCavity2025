@@ -1,0 +1,282 @@
+#include "FiniteVolume.h"
+#include "forAllOperations.h"
+#include "Solution.h"
+
+
+namespace fvm
+{
+namespace fvm {
+    FiniteMatrix::finiteMat dummyTerm(Fields::vectorField& vec)
+    {
+        finiteMat APtemp(vec.size(), vector<FiniteMatrix>(vec[0].size()));
+
+        //towards East side
+        forAllInternalUCVs(vec)
+        {
+
+            APtemp[i][j].aevalue = 1.0 * vec[i][j].value;
+            APtemp[i + 1][j].awvalue = -1.0 * vec[i][j].value;
+
+            //     APtemp[i][j].svalue += 0.0; // no source
+
+        }
+
+        // towards north side
+        forAllInternalVCVs(vec)
+        {
+            APtemp[i][j].anvalue = 2.0 * vec[i][j].value;
+            APtemp[i][j + 1].asvalue = -2.0 * vec[i][j].value;
+            //  APtemp[i][j].svalue += 0.0; // no source
+
+        }
+        return APtemp;
+    }
+
+    FiniteMatrix::finiteMat diffusiveTerm(Fields::vectorField& vec)
+    {
+        finiteMat APtemp(vec.size(), vector<FiniteMatrix>(vec[0].size()));
+
+        //towards East side
+        forAllInternalUCVs(vec)
+        {
+            const Fields Cell(vec[i][j]);
+
+            APtemp[i][j].aevalue = -(vec[i][j].visc * vec[i][j].Se) / vec[i][j].DXPtoE;
+            APtemp[i + 1][j].awvalue = -(vec[i][j].visc * vec[i][j].Se) / vec[i][j].DXPtoE;
+
+            //     APtemp[i][j].svalue += 0.0; // no source
+
+        }
+
+        // towards north side
+        forAllInternalVCVs(vec)
+        {
+
+            const Fields Cell(vec[i][j]);
+
+            APtemp[i][j].anvalue = -(vec[i][j].visc * vec[i][j].Sn) / vec[i][j].DYPtoN;
+            APtemp[i][j + 1].asvalue = -(vec[i][j].visc * vec[i][j].Sn) / vec[i][j].DYPtoN;
+            //  APtemp[i][j].svalue += 0.0; // no source
+
+        }
+        return APtemp;
+
+    }
+
+   
+    FiniteMatrix::finiteMat convDiffusive(Fields::vectorField& vec, Fields::vectorField& massFluxEast, Fields::vectorField& massFluxNorth, double& blendFac)
+    {
+        finiteMat APtemp(vec.size(), vector<FiniteMatrix>(vec[0].size()));
+
+        //towards East side
+        forAllInternalUCVs(vec)
+        {
+            double diff = (vec[i][j].visc * vec[i][j].Se) / vec[i][j].DXPtoE;
+
+
+            double cnvFluxNodeE = min(massFluxEast[i][j].value, 0.0);
+            double cnvFluxNodeP = max(massFluxEast[i][j].value, 0.0);
+
+
+            double fluxUDSapprox = cnvFluxNodeP * vec[i][j].value + cnvFluxNodeE * vec[i + 1][j].value;
+            double fluxCDSapprox = massFluxEast[i][j].value * ((vec[i + 1][j].value * vec[i][j].FXE) + (vec[i][j].value * vec[i][j].FXP));
+            double resultvalue = blendFac * (fluxUDSapprox - fluxCDSapprox);
+
+            APtemp[i][j].aevalue = cnvFluxNodeE - diff;
+            APtemp[i + 1][j].awvalue = -cnvFluxNodeP - diff;
+            APtemp[i][j].svalue = APtemp[i][j].svalue + resultvalue;
+            APtemp[i + 1][j].svalue = APtemp[i + 1][j].svalue - resultvalue;
+        }
+
+        // towards north side
+        forAllInternalVCVs(vec)
+        {
+
+            double diff = (vec[i][j].visc * vec[i][j].Sn) / vec[i][j].DYPtoN;
+
+            double cnvFluxNodeN = min(massFluxNorth[i][j].value, 0.0);
+            double cnvFluxNodeP = max(massFluxNorth[i][j].value, 0.0);
+
+
+
+            double fluxUDSapprox = cnvFluxNodeP * vec[i][j].value + cnvFluxNodeN * vec[i][j + 1].value;
+            double fluxCDSapprox = massFluxNorth[i][j].value * ((vec[i][j + 1].value * vec[i][j].FYN) + (vec[i][j].value * vec[i][j].FYP));
+            double resultvalue = blendFac * (fluxUDSapprox - fluxCDSapprox);
+
+            APtemp[i][j].svalue = APtemp[i][j].svalue + resultvalue;
+            APtemp[i + 1][j].svalue = APtemp[i + 1][j].svalue - resultvalue;
+
+            APtemp[i][j].svalue = resultvalue;
+            APtemp[i][j + 1].svalue = -resultvalue;
+        }
+        return APtemp;
+    }
+
+    FiniteMatrix::finiteMat convectionTerm(Fields::vectorField& vec, Fields::vectorField& massFluxEast, Fields::vectorField& massFluxNorth, double& blendFac)
+    {
+        finiteMat APtemp(vec.size(), vector<FiniteMatrix>(vec[0].size()));
+
+        //towards East side
+        forAllInternalUCVs(vec)
+        {
+            const Fields Cell(vec[i][j]);
+            const Fields CellNei(vec[i + 1][j]);
+
+            double cnvFluxNodeE = min(massFluxEast[i][j].value, 0.0);
+            double cnvFluxNodeP = max(massFluxEast[i][j].value, 0.0);
+
+            APtemp[i][j].aevalue = cnvFluxNodeE;
+            APtemp[i + 1][j].awvalue = -cnvFluxNodeP;
+
+
+            double fluxUDSapprox = cnvFluxNodeP * vec[i][j].value + cnvFluxNodeE * vec[i + 1][j].value;
+            double fluxCDSapprox = massFluxEast[i][j].value * (vec[i + 1][j].value * vec[i][j].FXE + vec[i][j].value * vec[i][j].FXP);
+            double resultvalue = blendFac * (fluxUDSapprox - fluxCDSapprox);
+            // result value viene dal deferred correction approach: praticamente si aggiunge un termine (noto!) alla parte di flusso convettivo
+            // Questo aiuta la convergenza. Visto che il termine Ã¯Â¿Â½ calcolato con le grandezze al iterazione m-1, va -con segno cambiato- a contribuire al
+            // vettore dei termini noti.
+            APtemp[i][j].svalue = APtemp[i][j].svalue + resultvalue;
+            APtemp[i + 1][j].svalue = APtemp[i + 1][j].svalue - resultvalue;
+
+        }
+
+        // towards north side
+        forAllInternalVCVs(vec)
+        {
+
+
+            double cnvFluxNodeN = min(massFluxNorth[i][j].value, 0.0);
+            double cnvFluxNodeP = max(massFluxNorth[i][j].value, 0.0);
+
+            APtemp[i][j].anvalue = cnvFluxNodeN;
+            APtemp[i][j + 1].asvalue = -cnvFluxNodeP;
+
+            double fluxUDSapprox = cnvFluxNodeP * vec[i][j].value + cnvFluxNodeN * vec[i][j + 1].value;
+            double fluxCDSapprox = massFluxNorth[i][j].value * (vec[i][j + 1].value * vec[i][j].FYN + vec[i][j].value * vec[i][j].FYP);
+            double resultvalue = blendFac * (fluxUDSapprox - fluxCDSapprox);
+            APtemp[i][j].svalue = APtemp[i][j].svalue + resultvalue;
+            APtemp[i][j + 1].svalue = APtemp[i][j + 1].svalue - resultvalue;
+        }
+        return APtemp;
+    }
+
+    FiniteMatrix::finiteMat timeDerivative(Fields::vectorField& VecNow, Fields::vectorField& VecOld, Fields::vectorField& VecOldOld, string& method)
+    {
+
+        finiteMat APtemp(VecNow.size(), vector<FiniteMatrix>(VecNow[0].size()));
+
+        if (method == "EULER2")
+        {
+            // This method is Implicit Euler Method
+            forAllInternal(VecNow)
+            {
+
+                double APtime = VecNow[i][j].density * (1.0 / VecNow[i][j].value) * VecNow[i][j].volume;
+                double GAMT = 0.0;  // If set to 1 , changes to 3 level Implicit Method
+
+                cout << APtime << endl;
+                APtemp[i][j].value = (1 + 0.5 * GAMT) * APtime;
+                APtemp[i][j].svalue = ((1.0 + GAMT) * APtime * VecOld[i][j].value) - (0.5 * APtime * VecOldOld[i][j].value);
+
+            }
+
+
+        }
+        else if (method == "EULER3")
+        {
+            forAllInternal(VecNow)
+            {
+                double APtime = VecNow[i][j].density * (1.0 / VecNow[i][j].value) * VecNow[i][j].volume;
+                double GAMT = 1.0;  // If set to 1 , changes to 3 level Implicit Method
+
+                APtemp[i][j].value = (1 + 0.5 * GAMT) * APtime;
+                APtemp[i][j].svalue = ((1.0 + GAMT) * APtime * VecOld[i][j].value) - (0.5 * APtime * VecOldOld[i][j].value);
+            }
+        }
+        else
+        {
+
+            cout << " Change Method to EULER2 or EULER3 " << endl;
+        }
+
+        return APtemp;
+
+    }
+
+    FiniteMatrix::finiteMat pressureGrad(const Fields::vectorField& vec, int& direction_)
+    {
+
+        finiteMat APtemp(vec.size(), vector<FiniteMatrix>(vec[0].size()));
+
+
+
+        forAllInternal(vec)
+        {
+            double DX = vec[i][j].X - vec[i - 1][j].X;
+            double DY = vec[i][j].Y - vec[i][j - 1].Y;
+
+
+            double pressureEastFace = (vec[i + 1][j].value * vec[i][j].FXE) + (vec[i][j].value * (1.0 - vec[i][j].FXE));
+            double pressureWestFace = (vec[i][j].value * vec[i - 1][j].FXE) + (vec[i - 1][j].value * (1.0 - vec[i - 1][j].FXE));
+            double pressureNorthFace = (vec[i][j + 1].value * vec[i][j].FYN) + (vec[i][j].value * (1.0 - vec[i][j].FYN));
+            double pressureSouthFace = (vec[i][j].value * vec[i][j - 1].FYN) + (vec[i][j - 1].value * (1.0 - vec[i][j - 1].FYN));
+
+
+            double pressureEastGrad = (pressureEastFace - pressureWestFace) / DX;
+            double pressureNorthGrad = (pressureNorthFace - pressureSouthFace) / DY;
+
+            // il gradiente di pressione lavora sui termini noti.
+            if (direction_ == 1)
+            {
+                APtemp[i][j].svalue = -pressureEastGrad * vec[i][j].volume;
+
+            }
+            else if (direction_ == 2)
+            {
+                APtemp[i][j].svalue = -pressureNorthGrad * vec[i][j].volume;
+            }
+
+        }   // end forAllInternal
+
+
+        return APtemp;
+
+    }
+
+    FiniteMatrix::finiteMat HTerm(const FiniteMatrix::finiteMat& APU1, const FiniteMatrix::finiteMat& APV1, Fields::vectorField& vec, Fields::vectorField& vec2)
+    {
+        finiteMat APtemp(APU1.size(), vector<FiniteMatrix>(APU1[0].size()));
+
+        forAllInternalUCVs(APtemp)
+        {
+
+            APtemp[i][j].aevalue = -vec[i][j].density * vec[i][j].Se * APU1[i][j].value * vec[i][j].Se;
+            APtemp[i + 1][j].awvalue = -vec[i][j].density * vec[i][j].Se * APU1[i][j].value * vec[i][j].Se;
+
+        }
+
+        forAllInternalVCVs(APtemp)
+        {
+
+            APtemp[i][j].anvalue = -vec2[i][j].density * vec2[i][j].Sn * APV1[i][j].value * vec[i][j].Sn;
+            APtemp[i][j + 1].asvalue = -vec2[i][j].density * vec2[i][j].Sn * APV1[i][j].value * vec[i][j].Sn;
+
+        }
+        return APtemp;
+
+    }
+
+    FiniteMatrix::finiteMat divPhi(const Fields::vectorField& Feast, const Fields::vectorField& Fnorth)
+    {
+        finiteMat APtemp(Feast.size(), vector<FiniteMatrix>(Feast[0].size()));
+
+        forAllInternal(APtemp)
+        {
+            APtemp[i][j].svalue = Feast[i - 1][j].value - Feast[i][j].value + Fnorth[i][j - 1].value
+                - Fnorth[i][j].value;
+        }
+        return APtemp;
+    }
+
+}   //end namespace
+}  // namespace fvm
